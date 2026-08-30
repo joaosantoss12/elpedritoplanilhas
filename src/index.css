@@ -1,0 +1,70 @@
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(1200px 600px at 50% -10%, #16224a 0%, #0f172a 55%, #0b1120 100%);
+  background-attachment: fixed;
+  color: #fff;
+  font-family: 'Fira Sans', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(59, 130, 246, 0.35);
+}
+
+/* tabular figures for all numeric data */
+.nums {
+  font-family: 'Fira Code', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-border bg-card/70 shadow-card backdrop-blur-sm;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold
+      transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2
+      focus-visible:ring-secondary focus-visible:ring-offset-2 focus-visible:ring-offset-bg
+      disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-primary text-white hover:bg-secondary;
+  }
+  .btn-ghost {
+    @apply btn border border-border bg-white/[0.03] text-fg hover:bg-white/[0.07];
+  }
+  .btn-danger {
+    @apply btn bg-red/90 text-white hover:bg-red;
+  }
+  .input {
+    @apply w-full rounded-xl border border-border bg-bg/60 px-3.5 py-2.5 text-sm text-fg
+      placeholder:text-fgDim focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary;
+  }
+  .label {
+    @apply mb-1.5 block text-xs font-medium uppercase tracking-wide text-fgMuted;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

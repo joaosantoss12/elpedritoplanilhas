@@ -12,7 +12,12 @@ import { filterByScope, scopeLabel, type Scope } from '../lib/scope';
 import { createBet, deleteBet, updateBankroll, updateBet } from '../lib/api';
 import { money } from '../lib/format';
 import type { Bet, BetDraft, Group } from '../lib/types';
-import { IconPlus } from '../components/icons';
+import { IconPlus, IconShare } from '../components/icons';
+
+const GROUP_CTA: Record<Group, { label: string; href: string }> = {
+  free: { label: 'Entrar no grupo Free', href: 'https://t.me/+JmHiwEn_RLw5MTlk' },
+  vip: { label: 'Entrar no grupo VIP', href: 'https://vipedrito.com' },
+};
 
 function readGroup(): Group {
   const g = new URLSearchParams(location.search).get('grupo');
@@ -90,8 +95,18 @@ export function PlanilhaPage() {
             </h1>
             <p className="text-sm text-fgMuted">{scopeLabel(scope)}</p>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href={GROUP_CTA[group].href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={group === 'vip' ? 'btn bg-green text-white hover:bg-green/90' : 'btn-primary'}
+            >
+              <IconShare width={16} height={16} />
+              {GROUP_CTA[group].label}
+            </a>
           {isAdmin && (
-            <div className="flex items-center gap-2">
+            <>
               <button className="btn-ghost" onClick={() => setBankrollOpen(true)}>
                 Banca inicial: {money(startingBankroll, currency)}
               </button>
@@ -104,8 +119,9 @@ export function PlanilhaPage() {
               >
                 <IconPlus /> Nova aposta
               </button>
-            </div>
+            </>
           )}
+          </div>
         </div>
 
         {error && (

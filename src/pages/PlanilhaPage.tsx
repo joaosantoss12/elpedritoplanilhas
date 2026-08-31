@@ -33,7 +33,7 @@ export function PlanilhaPage() {
   const [year, setYear] = useState(NOW.getFullYear());
   const [month, setMonth] = useState(NOW.getMonth());
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
-  const [view, setView] = useState<'day' | 'month'>('month');
+  const [view, setView] = useState<'day' | 'month' | 'year'>('month');
   const [formOpen, setFormOpen] = useState(false);
   const [presetDate, setPresetDate] = useState<string | null>(null);
   const [editing, setEditing] = useState<Bet | null>(null);
@@ -63,29 +63,36 @@ export function PlanilhaPage() {
     () => sortBets(bets.filter((b) => b.event_date.startsWith(monthPrefix))),
     [bets, monthPrefix],
   );
-
-  const scopedBets = useMemo(
-    () => (selectedDay ? monthBets.filter((b) => b.event_date === selectedDay) : monthBets),
-    [monthBets, selectedDay],
+  const yearBets = useMemo(
+    () => sortBets(bets.filter((b) => b.event_date.startsWith(`${year}-`))),
+    [bets, year],
   );
 
-  const priorBankroll = useMemo(
-    () =>
+  const scopedBets = useMemo(() => {
+    if (view === 'year') return yearBets;
+    if (selectedDay) return monthBets.filter((b) => b.event_date === selectedDay);
+    return monthBets;
+  }, [view, yearBets, monthBets, selectedDay]);
+
+  const priorBankroll = useMemo(() => {
+    const start = view === 'year' ? `${year}-01-01` : `${monthPrefix}-01`;
+    return (
       startingBankroll +
-      bets
-        .filter((b) => b.event_date < `${monthPrefix}-01`)
-        .reduce((s, b) => s + Number(b.profit), 0),
-    [bets, monthPrefix, startingBankroll],
-  );
+      bets.filter((b) => b.event_date < start).reduce((s, b) => s + Number(b.profit), 0)
+    );
+  }, [bets, view, year, monthPrefix, startingBankroll]);
 
   const stats = useMemo(
-    () => computeStats(monthBets, priorBankroll),
-    [monthBets, priorBankroll],
+    () => computeStats(view === 'year' ? yearBets : monthBets, priorBankroll),
+    [view, yearBets, monthBets, priorBankroll],
   );
 
-  const periodLabel = selectedDay
-    ? fmtDay(selectedDay)
-    : `${monthName(month)} de ${year}`;
+  const periodLabel =
+    view === 'year'
+      ? `Ano de ${year}`
+      : selectedDay
+        ? fmtDay(selectedDay)
+        : `${monthName(month)} de ${year}`;
 
   const selectDay = (iso: string | null) => {
     setSelectedDay(iso);
@@ -174,7 +181,7 @@ export function PlanilhaPage() {
           </div>
         ) : (
           <>
-            <StatsPanel stats={stats} currency={currency} title={`Resumo · ${monthName(month)} de ${year}`} />
+            <StatsPanel stats={stats} currency={currency} title={`Resumo · ${periodLabel}`} />
 
             <div className="grid gap-4 lg:grid-cols-[340px_1fr]">
               <BancaCalendar

@@ -11,11 +11,11 @@ import {
 } from 'recharts';
 import type { Bet } from '../lib/types';
 import { sortBets } from '../lib/stats';
-import { fmtDay, money, monthName, signedMoney, todayISO } from '../lib/format';
+import { fmtDay, money, monthName, monthShort, signedMoney, todayISO } from '../lib/format';
 import { StatusBadge } from './StatusBadge';
 import { IconEdit, IconPlus, IconTrash } from './icons';
 
-type View = 'day' | 'month';
+type View = 'day' | 'month' | 'year';
 
 interface Props {
   bets: Bet[]; // todas as apostas do grupo
@@ -94,6 +94,48 @@ export function BancaPanel({
     return pts;
   }, [monthBets, monthPrefix, year, month]);
 
+  const yearBets = useMemo(
+    () => sortBets(bets.filter((b) => b.event_date.startsWith(`${year}-`))),
+    [bets, year],
+  );
+  const yearProfit = yearBets.reduce((s, b) => s + Number(b.profit), 0);
+
+  const yearSeries = useMemo(() => {
+    const now = new Date();
+    const lastMonth = year === now.getFullYear() ? now.getMonth() : 11;
+    const perMonth = new Map<number, { pnl: number; count: number; staked: number }>();
+    for (const b of yearBets) {
+      const m = Number(b.event_date.slice(5, 7)) - 1;
+      const cur = perMonth.get(m) ?? { pnl: 0, count: 0, staked: 0 };
+      cur.pnl += Number(b.profit);
+      cur.count += 1;
+      cur.staked += Number(b.stake);
+      perMonth.set(m, cur);
+    }
+    const pts: {
+      month: number;
+      label: string;
+      dailyPnl: number;
+      cum: number;
+      count: number;
+      staked: number;
+    }[] = [];
+    let cum = 0;
+    for (let m = 0; m <= lastMonth; m++) {
+      const info = perMonth.get(m);
+      cum = Number((cum + (info?.pnl ?? 0)).toFixed(2));
+      pts.push({
+        month: m,
+        label: monthShort(m),
+        dailyPnl: Number((info?.pnl ?? 0).toFixed(2)),
+        cum,
+        count: info?.count ?? 0,
+        staked: Number((info?.staked ?? 0).toFixed(2)),
+      });
+    }
+    return pts;
+  }, [yearBets, year]);
+
   const dayBets = useMemo(
     () => (selectedDay ? sortBets(bets.filter((b) => b.event_date === selectedDay)) : []),
     [bets, selectedDay],
@@ -113,7 +155,7 @@ export function BancaPanel({
   return (
     <div className="card flex min-h-[420px] flex-col p-4 sm:p-4.5">
       <div className="mb-4 inline-flex w-fit gap-1 rounded-xl bg-white/[0.04] p-1">
-        {(['day', 'month'] as View[]).map((v) => (
+        {(['day', 'month', 'year'] as View[]).map((v) => (
           <button
             key={v}
             onClick={() => onViewChange(v)}
@@ -121,12 +163,63 @@ export function BancaPanel({
               view === v ? 'bg-secondary/20 text-secondary' : 'text-fgMuted hover:text-fg'
             }`}
           >
-            {v === 'day' ? 'Dia' : 'Mês'}
+            {v === 'day' ? 'Dia' : v === 'month' ? 'Mês' : 'Ano'}
           </button>
         ))}
       </div>
 
-      {view === 'month' ? (
+      {view === 'year' ? (
+        <>
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wide text-fgMuted">
+              Evolução · Ano {year}
+            </span>
+            <span
+              className={`nums text-sm font-bold ${
+                yearProfit > 0 ? 'text-green' : yearProfit < 0 ? 'text-red' : 'text-fgDim'
+              }`}
+            >
+              {signedMoney(yearProfit, currency)}
+            </span>
+          </div>
+          {yearBets.length === 0 ? (
+            <Empty label="Sem apostas neste ano" />
+          ) : (
+            <div className="h-[240px] w-full">
+              <ResponsiveContainer>
+                <AreaChart data={yearSeries} margin={{ top: 8, right: 12, bottom: 0, left: -12 }}>
+                  <defs>
+                    <linearGradient id="yrArea" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={LINE} stopOpacity={0.28} />
+                      <stop offset="100%" stopColor={LINE} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                  <XAxis dataKey="label" stroke={DIM} fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis stroke={DIM} fontSize={11} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    content={<YearTip currency={currency} year={year} />}
+                    cursor={{ stroke: 'rgba(255,255,255,0.15)' }}
+                  />
+                  <ReferenceLine y={0} stroke="rgba(255,255,255,0.12)" strokeDasharray="4 4" />
+                  <Area
+                    type="monotone"
+                    dataKey="cum"
+                    stroke={LINE}
+                    strokeWidth={2}
+                    fill="url(#yrArea)"
+                    dot={false}
+                    activeDot={{ r: 4, fill: LINE }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          <p className="mt-3 text-xs text-fgDim">
+            Lucro/prejuízo acumulado mês a mês em {year}. Usa as setas do calendário para mudar de ano.
+          </p>
+        </>
+      ) : view === 'month' ? (
         <>
           <div className="mb-3 flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wide text-fgMuted">
@@ -329,6 +422,22 @@ function BetDot(props: any) {
       stroke="rgba(255,255,255,0.35)"
       strokeWidth={2}
     />
+  );
+}
+
+function YearTip({ active, payload, currency, year }: any) {
+  if (!active || !payload?.length) return null;
+  const p = payload[0].payload;
+  return (
+    <div className="card border-white/10 p-3 text-xs">
+      <p className="mb-1 font-semibold">
+        {monthName(p.month)} {year}
+      </p>
+      <Row k="P/L do mês" v={signedMoney(p.dailyPnl, currency)} tone={p.dailyPnl} />
+      <Row k="Acumulado" v={signedMoney(p.cum, currency)} tone={p.cum} />
+      <Row k="Apostas" v={String(p.count)} />
+      <Row k="Investido" v={money(p.staked, currency)} />
+    </div>
   );
 }
 

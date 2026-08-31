@@ -13,7 +13,7 @@ export const pct = (v: number, digits = 1) =>
 
 export const num = (v: number, digits = 2) => (v || 0).toFixed(digits);
 
-const MONTHS_PT = [
+export const MONTHS_PT = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ];

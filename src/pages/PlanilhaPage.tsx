@@ -10,7 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import { useGroupData } from '../hooks/useGroupData';
 import { computeStats, sortBets } from '../lib/stats';
 import { createBet, deleteBet, updateBankroll, updateBet } from '../lib/api';
-import { fmtDay, money, monthName } from '../lib/format';
+import { fmtDay, money, monthName, MONTHS_PT } from '../lib/format';
 import type { Bet, BetDraft, Group } from '../lib/types';
 import { IconPlus, IconShare } from '../components/icons';
 
@@ -142,19 +142,26 @@ export function PlanilhaPage() {
     [reload],
   );
 
-  const FILTERS: { v: Level; label: string; disabled?: boolean }[] = [
-    { v: 'all', label: 'Ver desde sempre' },
-    { v: 'year', label: 'Escolher o ano' },
-    { v: 'month', label: 'Escolher o mês' },
-    { v: 'day', label: 'Escolher o dia', disabled: !selectedDay },
-  ];
+  const years = useMemo(() => {
+    const set = new Set<number>([NOW.getFullYear(), year]);
+    for (const b of bets) set.add(Number(b.event_date.slice(0, 4)));
+    return [...set].sort((a, b) => b - a);
+  }, [bets, year]);
 
-  const setFilter = (v: Level) => {
-    if (v === 'day' && !selectedDay) return;
-    setLevel(v);
-  };
+  const monthDays = useMemo(() => {
+    const set = new Set<string>();
+    for (const b of bets) if (b.event_date.startsWith(monthPrefix)) set.add(b.event_date);
+    return [...set].sort();
+  }, [bets, monthPrefix]);
 
   const calMode: 'month' | 'year' = level === 'year' ? 'year' : 'month';
+
+  const fieldCls = (active: boolean) =>
+    `flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+      active
+        ? 'border-secondary bg-secondary/20 text-secondary'
+        : 'border-border bg-white/[0.03] text-fgMuted'
+    }`;
 
   return (
     <div className="min-h-dvh">
@@ -207,24 +214,82 @@ export function PlanilhaPage() {
           </div>
         ) : (
           <>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {FILTERS.map((f) => (
-                <button
-                  key={f.v}
-                  onClick={() => setFilter(f.v)}
-                  disabled={f.disabled}
-                  className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                    level === f.v
-                      ? 'border-secondary bg-secondary/20 text-secondary'
-                      : 'border-border bg-white/[0.03] text-fgMuted hover:border-white/25 hover:text-fg'
-                  }`}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setLevel('all')}
+                className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  level === 'all'
+                    ? 'border-secondary bg-secondary/20 text-secondary'
+                    : 'border-border bg-white/[0.03] text-fgMuted hover:border-white/25 hover:text-fg'
+                }`}
+              >
+                Ver desde sempre
+              </button>
+
+              <label className={fieldCls(level === 'year')}>
+                <span className="text-fgDim">Ano</span>
+                <select
+                  className="nums bg-transparent font-semibold text-fg focus:outline-none"
+                  value={year}
+                  onChange={(e) => {
+                    setYear(Number(e.target.value));
+                    setSelectedDay(null);
+                    setLevel('year');
+                  }}
                 >
-                  {f.label}
-                </button>
-              ))}
-              {selectedDay && (
-                <span className="ml-1 text-xs text-fgDim">{fmtDay(selectedDay)}</span>
-              )}
+                  {years.map((y) => (
+                    <option key={y} value={y} className="bg-card">
+                      {y}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className={fieldCls(level === 'month')}>
+                <span className="text-fgDim">Mês</span>
+                <select
+                  className="bg-transparent font-semibold text-fg focus:outline-none"
+                  value={month}
+                  onChange={(e) => {
+                    setMonth(Number(e.target.value));
+                    setSelectedDay(null);
+                    setLevel('month');
+                  }}
+                >
+                  {MONTHS_PT.map((name, m) => (
+                    <option key={name} value={m} className="bg-card">
+                      {name} {year}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label
+                className={`${fieldCls(level === 'day')} ${
+                  monthDays.length ? '' : 'cursor-not-allowed opacity-40'
+                }`}
+              >
+                <span className="text-fgDim">Dia</span>
+                <select
+                  className="bg-transparent font-semibold text-fg focus:outline-none disabled:cursor-not-allowed"
+                  value={selectedDay ?? ''}
+                  disabled={!monthDays.length}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setSelectedDay(v || null);
+                    setLevel(v ? 'day' : 'month');
+                  }}
+                >
+                  <option value="" className="bg-card">
+                    {monthDays.length ? 'Escolher…' : 'Sem apostas'}
+                  </option>
+                  {monthDays.map((d) => (
+                    <option key={d} value={d} className="bg-card">
+                      {fmtDay(d)}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
 
             <StatsPanel stats={stats} currency={currency} title={`Resumo · ${periodLabel}`} />

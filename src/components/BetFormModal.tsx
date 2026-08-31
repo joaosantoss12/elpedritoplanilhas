@@ -34,6 +34,7 @@ const empty = (grp: Group): BetDraft => ({
 
 export function BetFormModal({ open, onClose, grp, editing, presetDate, onSave }: Props) {
   const [form, setForm] = useState<BetDraft>(empty(grp));
+  const [nums, setNums] = useState({ odd: '', stake: '', return_amount: '' });
   const [touchedReturn, setTouchedReturn] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -42,32 +43,45 @@ export function BetFormModal({ open, onClose, grp, editing, presetDate, onSave }
     if (!open) return;
     setErr(null);
     setTouchedReturn(Boolean(editing));
-    setForm(
-      editing
-        ? {
-            grp: editing.grp,
-            event_date: editing.event_date,
-            team_a: editing.team_a,
-            team_b: editing.team_b,
-            market: editing.market,
-            odd: editing.odd,
-            stake: editing.stake,
-            return_amount: editing.return_amount,
-            status: editing.status,
-            note: editing.note ?? '',
-          }
-        : { ...empty(grp), event_date: presetDate ?? todayISO() },
-    );
+    const next: BetDraft = editing
+      ? {
+          grp: editing.grp,
+          event_date: editing.event_date,
+          team_a: editing.team_a,
+          team_b: editing.team_b,
+          market: editing.market,
+          odd: editing.odd,
+          stake: editing.stake,
+          return_amount: editing.return_amount,
+          status: editing.status,
+          note: editing.note ?? '',
+        }
+      : { ...empty(grp), event_date: presetDate ?? todayISO() };
+    setForm(next);
+    setNums({
+      odd: String(next.odd),
+      stake: String(next.stake),
+      return_amount: String(next.return_amount),
+    });
   }, [open, editing, grp, presetDate]);
 
   // retorno potencial auto (enquanto o admin nao o editar manualmente)
   useEffect(() => {
     if (touchedReturn) return;
-    setForm((f) => ({ ...f, return_amount: +(f.odd * f.stake).toFixed(2) }));
+    const val = +(form.odd * form.stake).toFixed(2);
+    setForm((f) => ({ ...f, return_amount: val }));
+    setNums((n) => ({ ...n, return_amount: String(val) }));
   }, [form.odd, form.stake, touchedReturn]);
 
   const set = <K extends keyof BetDraft>(k: K, v: BetDraft[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
+
+  // campos numericos: mantem o texto tal como escrito (permite apagar) e
+  // guarda o valor parseado no form
+  const setNum = (k: 'odd' | 'stake' | 'return_amount', v: string) => {
+    setNums((n) => ({ ...n, [k]: v }));
+    setForm((f) => ({ ...f, [k]: v.trim() === '' ? 0 : parseFloat(v) || 0 }));
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -166,22 +180,22 @@ export function BetFormModal({ open, onClose, grp, editing, presetDate, onSave }
           <div>
             <label className="label" htmlFor="o">Odd</label>
             <input id="o" type="number" step="0.01" min="1" className="input nums"
-              value={form.odd}
-              onChange={(e) => set('odd', parseFloat(e.target.value) || 0)} required />
+              value={nums.odd}
+              onChange={(e) => setNum('odd', e.target.value)} required />
           </div>
           <div>
             <label className="label" htmlFor="s">Valor (€)</label>
             <input id="s" type="number" step="0.01" min="0" className="input nums"
-              value={form.stake}
-              onChange={(e) => set('stake', parseFloat(e.target.value) || 0)} required />
+              value={nums.stake}
+              onChange={(e) => setNum('stake', e.target.value)} required />
           </div>
           <div>
             <label className="label" htmlFor="r">Retorno (€)</label>
             <input id="r" type="number" step="0.01" min="0" className="input nums"
-              value={form.return_amount}
+              value={nums.return_amount}
               onChange={(e) => {
                 setTouchedReturn(true);
-                set('return_amount', parseFloat(e.target.value) || 0);
+                setNum('return_amount', e.target.value);
               }} required />
           </div>
         </div>

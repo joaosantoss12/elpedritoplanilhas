@@ -57,3 +57,6 @@ export const IconCalendar = (p: SVGProps<SVGSVGElement>) => (
 export const IconCoins = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}><ellipse cx="9" cy="7" rx="6" ry="3" /><path d="M3 7v5c0 1.7 2.7 3 6 3M15 9.5c3.3 0 6 1.3 6 3v5c0 1.7-2.7 3-6 3s-6-1.3-6-3v-5" /></svg>
 );
+export const IconDownload = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="M12 3v12M7 10l5 5 5-5M5 21h14" /></svg>
+);

@@ -11,8 +11,9 @@ import { useGroupData } from '../hooks/useGroupData';
 import { computeStats, sortBets } from '../lib/stats';
 import { createBet, deleteBet, updateBankroll, updateBet } from '../lib/api';
 import { fmtDay, money, monthName, MONTHS_PT } from '../lib/format';
+import { downloadPlanilhaExcel } from '../lib/exportExcel';
 import type { Bet, BetDraft, Group } from '../lib/types';
-import { IconPlus, IconShare } from '../components/icons';
+import { IconDownload, IconPlus, IconShare } from '../components/icons';
 
 const GROUP_CTA: Record<Group, { label: string; href: string }> = {
   free: { label: 'Entrar no grupo Free', href: 'https://t.me/+JmHiwEn_RLw5MTlk' },
@@ -156,6 +157,17 @@ export function PlanilhaPage() {
 
   const calMode: 'month' | 'year' = level === 'year' ? 'year' : 'month';
 
+  const [exporting, setExporting] = useState(false);
+  const exportExcel = async () => {
+    setExporting(true);
+    try {
+      const allTimeStats = computeStats(allBets, startingBankroll);
+      await downloadPlanilhaExcel(allBets, group, allTimeStats, currency);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const fieldCls = (active: boolean) =>
     `flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
       active
@@ -185,6 +197,14 @@ export function PlanilhaPage() {
               <IconShare width={16} height={16} />
               {GROUP_CTA[group].label}
             </a>
+            <button
+              className="btn-ghost"
+              onClick={exportExcel}
+              disabled={exporting || !allBets.length}
+            >
+              <IconDownload width={16} height={16} />
+              {exporting ? 'A gerar…' : 'Descarregar Excel'}
+            </button>
             {isAdmin && (
               <>
                 <button className="btn-ghost" onClick={() => setBankrollOpen(true)}>

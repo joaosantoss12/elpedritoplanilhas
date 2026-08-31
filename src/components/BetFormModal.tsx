@@ -8,6 +8,7 @@ interface Props {
   onClose: () => void;
   grp: Group;
   editing: Bet | null;
+  presetDate?: string | null;
   onSave: (draft: BetDraft, id?: string) => Promise<void>;
 }
 
@@ -31,7 +32,7 @@ const empty = (grp: Group): BetDraft => ({
   note: '',
 });
 
-export function BetFormModal({ open, onClose, grp, editing, onSave }: Props) {
+export function BetFormModal({ open, onClose, grp, editing, presetDate, onSave }: Props) {
   const [form, setForm] = useState<BetDraft>(empty(grp));
   const [touchedReturn, setTouchedReturn] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -55,9 +56,9 @@ export function BetFormModal({ open, onClose, grp, editing, onSave }: Props) {
             status: editing.status,
             note: editing.note ?? '',
           }
-        : empty(grp),
+        : { ...empty(grp), event_date: presetDate ?? todayISO() },
     );
-  }, [open, editing, grp]);
+  }, [open, editing, grp, presetDate]);
 
   // retorno potencial auto (enquanto o admin nao o editar manualmente)
   useEffect(() => {

@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Header } from '../components/Header';
 import { StatsPanel } from '../components/StatsPanel';
-import { DrilldownChart } from '../components/DrilldownChart';
+import { BancaCalendar } from '../components/BancaCalendar';
+import { BancaPanel } from '../components/BancaPanel';
 import { BetsTable } from '../components/BetsTable';
 import { BetFormModal } from '../components/BetFormModal';
 import { BankrollModal } from '../components/BankrollModal';
-import { TimeNavPanel } from '../components/TimeNavPanel';
 import { useAuth } from '../context/AuthContext';
 import { useGroupData } from '../hooks/useGroupData';
 import { computeStats, sortBets } from '../lib/stats';
-import { filterByScope, scopeLabel, type Scope } from '../lib/scope';
 import { createBet, deleteBet, updateBankroll, updateBet } from '../lib/api';
-import { money } from '../lib/format';
+import { fmtDay, money, monthName } from '../lib/format';
 import type { Bet, BetDraft, Group } from '../lib/types';
 import { IconPlus, IconShare } from '../components/icons';
 
@@ -19,6 +18,9 @@ const GROUP_CTA: Record<Group, { label: string; href: string }> = {
   free: { label: 'Entrar no grupo Free', href: 'https://t.me/+JmHiwEn_RLw5MTlk' },
   vip: { label: 'Entrar no grupo VIP', href: 'https://vipedrito.com' },
 };
+
+const NOW = new Date();
+const pad = (n: number) => String(n).padStart(2, '0');
 
 function readGroup(): Group {
   const g = new URLSearchParams(location.search).get('grupo');
@@ -28,8 +30,12 @@ function readGroup(): Group {
 export function PlanilhaPage() {
   const { isAdmin } = useAuth();
   const [group, setGroup] = useState<Group>(readGroup);
-  const [scope, setScope] = useState<Scope>({ level: 'all' });
+  const [year, setYear] = useState(NOW.getFullYear());
+  const [month, setMonth] = useState(NOW.getMonth());
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [view, setView] = useState<'day' | 'month'>('month');
   const [formOpen, setFormOpen] = useState(false);
+  const [presetDate, setPresetDate] = useState<string | null>(null);
   const [editing, setEditing] = useState<Bet | null>(null);
   const [bankrollOpen, setBankrollOpen] = useState(false);
 
@@ -45,26 +51,59 @@ export function PlanilhaPage() {
 
   const changeGroup = (g: Group) => {
     setGroup(g);
-    setScope({ level: 'all' });
+    setYear(NOW.getFullYear());
+    setMonth(NOW.getMonth());
+    setSelectedDay(null);
+    setView('month');
   };
 
-  const scoped = useMemo(() => sortBets(filterByScope(bets, scope)), [bets, scope]);
+  const monthPrefix = `${year}-${pad(month + 1)}`;
 
-  const priorBankroll = useMemo(() => {
-    if (scope.level === 'all') return startingBankroll;
-    const start = `${scope.year}-${String((scope.month ?? 0) + 1).padStart(2, '0')}-${String(
-      scope.day ?? 1,
-    ).padStart(2, '0')}`;
-    return (
+  const monthBets = useMemo(
+    () => sortBets(bets.filter((b) => b.event_date.startsWith(monthPrefix))),
+    [bets, monthPrefix],
+  );
+
+  const scopedBets = useMemo(
+    () => (selectedDay ? monthBets.filter((b) => b.event_date === selectedDay) : monthBets),
+    [monthBets, selectedDay],
+  );
+
+  const priorBankroll = useMemo(
+    () =>
       startingBankroll +
-      bets.filter((b) => b.event_date < start).reduce((s, b) => s + Number(b.profit), 0)
-    );
-  }, [bets, scope, startingBankroll]);
+      bets
+        .filter((b) => b.event_date < `${monthPrefix}-01`)
+        .reduce((s, b) => s + Number(b.profit), 0),
+    [bets, monthPrefix, startingBankroll],
+  );
 
   const stats = useMemo(
-    () => computeStats(scoped, priorBankroll),
-    [scoped, priorBankroll],
+    () => computeStats(monthBets, priorBankroll),
+    [monthBets, priorBankroll],
   );
+
+  const periodLabel = selectedDay
+    ? fmtDay(selectedDay)
+    : `${monthName(month)} de ${year}`;
+
+  const selectDay = (iso: string | null) => {
+    setSelectedDay(iso);
+    setView(iso ? 'day' : 'month');
+  };
+
+  const changeMonth = (y: number, m: number) => {
+    setYear(y);
+    setMonth(m);
+    setSelectedDay(null);
+    setView('month');
+  };
+
+  const openNew = (date?: string) => {
+    setEditing(null);
+    setPresetDate(date ?? null);
+    setFormOpen(true);
+  };
 
   const save = useCallback(
     async (draft: BetDraft, id?: string) => {
@@ -88,13 +127,13 @@ export function PlanilhaPage() {
     <div className="min-h-dvh">
       <Header group={group} onGroupChange={changeGroup} />
 
-      <main className="mx-auto max-w-6xl space-y-6 px-4 py-6 lg:pr-[268px]">
+      <main className="mx-auto max-w-6xl space-y-6 px-4 py-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold sm:text-2xl">
               Planilha {group === 'vip' ? 'VIP' : 'Grátis'}
             </h1>
-            <p className="text-sm text-fgMuted">{scopeLabel(scope)}</p>
+            <p className="text-sm text-fgMuted">{periodLabel}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <a
@@ -106,22 +145,16 @@ export function PlanilhaPage() {
               <IconShare width={16} height={16} />
               {GROUP_CTA[group].label}
             </a>
-          {isAdmin && (
-            <>
-              <button className="btn-ghost" onClick={() => setBankrollOpen(true)}>
-                Banca inicial: {money(startingBankroll, currency)}
-              </button>
-              <button
-                className="btn-primary"
-                onClick={() => {
-                  setEditing(null);
-                  setFormOpen(true);
-                }}
-              >
-                <IconPlus /> Nova aposta
-              </button>
-            </>
-          )}
+            {isAdmin && (
+              <>
+                <button className="btn-ghost" onClick={() => setBankrollOpen(true)}>
+                  Banca inicial: {money(startingBankroll, currency)}
+                </button>
+                <button className="btn-primary" onClick={() => openNew()}>
+                  <IconPlus /> Nova aposta
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -141,26 +174,48 @@ export function PlanilhaPage() {
           </div>
         ) : (
           <>
-            <StatsPanel stats={stats} currency={currency} title={`Resumo · ${scopeLabel(scope)}`} />
+            <StatsPanel stats={stats} currency={currency} title={`Resumo · ${monthName(month)} de ${year}`} />
 
-            <DrilldownChart
-              allBets={bets}
-              startingBankroll={startingBankroll}
-              currency={currency}
-              scope={scope}
-            />
+            <div className="grid gap-4 lg:grid-cols-[340px_1fr]">
+              <BancaCalendar
+                bets={bets}
+                year={year}
+                month={month}
+                selectedDay={selectedDay}
+                onMonthChange={changeMonth}
+                onSelectDay={selectDay}
+              />
+              <BancaPanel
+                bets={bets}
+                year={year}
+                month={month}
+                selectedDay={selectedDay}
+                view={view}
+                onViewChange={setView}
+                currency={currency}
+                isAdmin={isAdmin}
+                onAdd={openNew}
+                onEdit={(b) => {
+                  setEditing(b);
+                  setPresetDate(null);
+                  setFormOpen(true);
+                }}
+                onDelete={remove}
+              />
+            </div>
 
             <section className="space-y-3">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-fgMuted">
-                Apostas · {scopeLabel(scope)}
+                Apostas · {periodLabel}
               </h2>
               <BetsTable
-                bets={scoped}
+                bets={scopedBets}
                 currency={currency}
                 isAdmin={isAdmin}
-                showDate={scope.level !== 'day'}
+                showDate={!selectedDay}
                 onEdit={(b) => {
                   setEditing(b);
+                  setPresetDate(null);
                   setFormOpen(true);
                 }}
                 onDelete={remove}
@@ -169,10 +224,6 @@ export function PlanilhaPage() {
           </>
         )}
       </main>
-
-      {!loading && !error && (
-        <TimeNavPanel allBets={bets} scope={scope} onScopeChange={setScope} />
-      )}
 
       <footer className="mx-auto max-w-6xl px-4 py-8 text-center text-xs text-fgDim">
         Página pública de leitura · dados atualizados em tempo real
@@ -183,6 +234,7 @@ export function PlanilhaPage() {
         onClose={() => setFormOpen(false)}
         grp={group}
         editing={editing}
+        presetDate={presetDate}
         onSave={save}
       />
       <BankrollModal

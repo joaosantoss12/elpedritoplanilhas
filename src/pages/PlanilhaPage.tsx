@@ -5,6 +5,7 @@ import { DrilldownChart } from '../components/DrilldownChart';
 import { BetsTable } from '../components/BetsTable';
 import { BetFormModal } from '../components/BetFormModal';
 import { BankrollModal } from '../components/BankrollModal';
+import { TimeNavPanel } from '../components/TimeNavPanel';
 import { useAuth } from '../context/AuthContext';
 import { useGroupData } from '../hooks/useGroupData';
 import { computeStats, sortBets } from '../lib/stats';
@@ -87,7 +88,7 @@ export function PlanilhaPage() {
     <div className="min-h-dvh">
       <Header group={group} onGroupChange={changeGroup} />
 
-      <main className="mx-auto max-w-6xl space-y-6 px-4 py-6">
+      <main className="mx-auto max-w-6xl space-y-6 px-4 py-6 lg:pr-[268px]">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold sm:text-2xl">
@@ -147,7 +148,6 @@ export function PlanilhaPage() {
               startingBankroll={startingBankroll}
               currency={currency}
               scope={scope}
-              onScopeChange={setScope}
             />
 
             <section className="space-y-3">
@@ -169,6 +169,10 @@ export function PlanilhaPage() {
           </>
         )}
       </main>
+
+      {!loading && !error && (
+        <TimeNavPanel allBets={bets} scope={scope} onScopeChange={setScope} />
+      )}
 
       <footer className="mx-auto max-w-6xl px-4 py-8 text-center text-xs text-fgDim">
         Página pública de leitura · dados atualizados em tempo real

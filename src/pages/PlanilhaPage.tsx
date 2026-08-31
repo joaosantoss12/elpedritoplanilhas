@@ -216,7 +216,12 @@ export function PlanilhaPage() {
           <>
             <div className="flex flex-wrap items-center gap-2">
               <button
-                onClick={() => setLevel('all')}
+                onClick={() => {
+                  setYear(NOW.getFullYear());
+                  setMonth(NOW.getMonth());
+                  setSelectedDay(null);
+                  setLevel('all');
+                }}
                 className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
                   level === 'all'
                     ? 'border-secondary bg-secondary/20 text-secondary'

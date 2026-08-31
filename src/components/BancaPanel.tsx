@@ -15,15 +15,14 @@ import { fmtDay, money, monthName, monthShort, signedMoney, todayISO } from '../
 import { StatusBadge } from './StatusBadge';
 import { IconEdit, IconPlus, IconTrash } from './icons';
 
-type View = 'day' | 'month' | 'year';
+export type Level = 'all' | 'year' | 'month' | 'day';
 
 interface Props {
-  bets: Bet[]; // todas as apostas do grupo
+  bets: Bet[];
+  level: Level;
   year: number;
   month: number; // 0..11
   selectedDay: string | null;
-  view: View;
-  onViewChange: (v: View) => void;
   currency: string;
   isAdmin: boolean;
   onAdd: (dateISO: string) => void;
@@ -40,11 +39,10 @@ const pad = (n: number) => String(n).padStart(2, '0');
 
 export function BancaPanel({
   bets,
+  level,
   year,
   month,
   selectedDay,
-  view,
-  onViewChange,
   currency,
   isAdmin,
   onAdd,
@@ -57,90 +55,105 @@ export function BancaPanel({
     () => sortBets(bets.filter((b) => b.event_date.startsWith(monthPrefix))),
     [bets, monthPrefix],
   );
-  const monthProfit = monthBets.reduce((s, b) => s + Number(b.profit), 0);
-
-  const monthSeries = useMemo(() => {
-    const today = todayISO();
-    const dim = new Date(year, month + 1, 0).getDate();
-    const perDay = new Map<string, { pnl: number; count: number; staked: number }>();
-    for (const b of monthBets) {
-      const cur = perDay.get(b.event_date) ?? { pnl: 0, count: 0, staked: 0 };
-      cur.pnl += Number(b.profit);
-      cur.count += 1;
-      cur.staked += Number(b.stake);
-      perDay.set(b.event_date, cur);
-    }
-    const pts: {
-      day: number;
-      dailyPnl: number;
-      cum: number;
-      count: number;
-      staked: number;
-    }[] = [];
-    let cum = 0;
-    for (let d = 1; d <= dim; d++) {
-      const key = `${monthPrefix}-${pad(d)}`;
-      if (key > today) break;
-      const info = perDay.get(key);
-      cum = Number((cum + (info?.pnl ?? 0)).toFixed(2));
-      pts.push({
-        day: d,
-        dailyPnl: Number((info?.pnl ?? 0).toFixed(2)),
-        cum,
-        count: info?.count ?? 0,
-        staked: Number((info?.staked ?? 0).toFixed(2)),
-      });
-    }
-    return pts;
-  }, [monthBets, monthPrefix, year, month]);
-
   const yearBets = useMemo(
     () => sortBets(bets.filter((b) => b.event_date.startsWith(`${year}-`))),
     [bets, year],
   );
+  const dayBets = useMemo(
+    () => (selectedDay ? sortBets(bets.filter((b) => b.event_date === selectedDay)) : []),
+    [bets, selectedDay],
+  );
+
+  const monthProfit = monthBets.reduce((s, b) => s + Number(b.profit), 0);
   const yearProfit = yearBets.reduce((s, b) => s + Number(b.profit), 0);
+  const dayProfit = dayBets.reduce((s, b) => s + Number(b.profit), 0);
+  const allProfit = bets.reduce((s, b) => s + Number(b.profit), 0);
+
+  const allSeries = useMemo(() => {
+    const per = new Map<number, { pnl: number; count: number; staked: number }>();
+    for (const b of bets) {
+      const y = Number(b.event_date.slice(0, 4));
+      const cur = per.get(y) ?? { pnl: 0, count: 0, staked: 0 };
+      cur.pnl += Number(b.profit);
+      cur.count += 1;
+      cur.staked += Number(b.stake);
+      per.set(y, cur);
+    }
+    let cum = 0;
+    return [...per.keys()]
+      .sort((a, b) => a - b)
+      .map((y) => {
+        const info = per.get(y)!;
+        cum = Number((cum + info.pnl).toFixed(2));
+        return {
+          label: String(y),
+          bucketPnl: Number(info.pnl.toFixed(2)),
+          cum,
+          count: info.count,
+          staked: Number(info.staked.toFixed(2)),
+          unit: 'ano' as const,
+        };
+      });
+  }, [bets]);
 
   const yearSeries = useMemo(() => {
     const now = new Date();
     const lastMonth = year === now.getFullYear() ? now.getMonth() : 11;
-    const perMonth = new Map<number, { pnl: number; count: number; staked: number }>();
+    const per = new Map<number, { pnl: number; count: number; staked: number }>();
     for (const b of yearBets) {
       const m = Number(b.event_date.slice(5, 7)) - 1;
-      const cur = perMonth.get(m) ?? { pnl: 0, count: 0, staked: 0 };
+      const cur = per.get(m) ?? { pnl: 0, count: 0, staked: 0 };
       cur.pnl += Number(b.profit);
       cur.count += 1;
       cur.staked += Number(b.stake);
-      perMonth.set(m, cur);
+      per.set(m, cur);
     }
-    const pts: {
-      month: number;
-      label: string;
-      dailyPnl: number;
-      cum: number;
-      count: number;
-      staked: number;
-    }[] = [];
     let cum = 0;
+    const pts = [];
     for (let m = 0; m <= lastMonth; m++) {
-      const info = perMonth.get(m);
+      const info = per.get(m);
       cum = Number((cum + (info?.pnl ?? 0)).toFixed(2));
       pts.push({
-        month: m,
         label: monthShort(m),
-        dailyPnl: Number((info?.pnl ?? 0).toFixed(2)),
+        bucketPnl: Number((info?.pnl ?? 0).toFixed(2)),
         cum,
         count: info?.count ?? 0,
         staked: Number((info?.staked ?? 0).toFixed(2)),
+        unit: monthName(m),
       });
     }
     return pts;
   }, [yearBets, year]);
 
-  const dayBets = useMemo(
-    () => (selectedDay ? sortBets(bets.filter((b) => b.event_date === selectedDay)) : []),
-    [bets, selectedDay],
-  );
-  const dayProfit = dayBets.reduce((s, b) => s + Number(b.profit), 0);
+  const monthSeries = useMemo(() => {
+    const today = todayISO();
+    const dim = new Date(year, month + 1, 0).getDate();
+    const per = new Map<string, { pnl: number; count: number; staked: number }>();
+    for (const b of monthBets) {
+      const cur = per.get(b.event_date) ?? { pnl: 0, count: 0, staked: 0 };
+      cur.pnl += Number(b.profit);
+      cur.count += 1;
+      cur.staked += Number(b.stake);
+      per.set(b.event_date, cur);
+    }
+    let cum = 0;
+    const pts = [];
+    for (let d = 1; d <= dim; d++) {
+      const key = `${monthPrefix}-${pad(d)}`;
+      if (key > today) break;
+      const info = per.get(key);
+      cum = Number((cum + (info?.pnl ?? 0)).toFixed(2));
+      pts.push({
+        label: String(d),
+        bucketPnl: Number((info?.pnl ?? 0).toFixed(2)),
+        cum,
+        count: info?.count ?? 0,
+        staked: Number((info?.staked ?? 0).toFixed(2)),
+        unit: `${d} de ${monthName(month)}`,
+      });
+    }
+    return pts;
+  }, [monthBets, monthPrefix, year, month]);
 
   const daySeries = useMemo(() => {
     const pts = [{ label: 'Início', cum: 0, bet: null as Bet | null }];
@@ -152,93 +165,47 @@ export function BancaPanel({
     return pts;
   }, [dayBets]);
 
+  const head =
+    level === 'all'
+      ? { title: 'Evolução · Histórico completo', profit: allProfit }
+      : level === 'year'
+        ? { title: `Evolução · Ano ${year}`, profit: yearProfit }
+        : level === 'month'
+          ? { title: `Evolução · ${monthName(month)} ${year}`, profit: monthProfit }
+          : { title: '', profit: dayProfit };
+
+  const bucketSeries =
+    level === 'all' ? allSeries : level === 'year' ? yearSeries : level === 'month' ? monthSeries : [];
+
+  const caption =
+    level === 'all'
+      ? 'Lucro/prejuízo acumulado ano a ano.'
+      : level === 'year'
+        ? `Lucro/prejuízo acumulado mês a mês em ${year}. Setas do calendário mudam de ano.`
+        : 'Lucro/prejuízo acumulado ao longo dos dias do mês. Escolhe um dia no calendário para o detalhe.';
+
   return (
     <div className="card flex min-h-[420px] flex-col p-4 sm:p-4.5">
-      <div className="mb-4 inline-flex w-fit gap-1 rounded-xl bg-white/[0.04] p-1">
-        {(['day', 'month', 'year'] as View[]).map((v) => (
-          <button
-            key={v}
-            onClick={() => onViewChange(v)}
-            className={`rounded-lg px-3 py-1 text-xs font-semibold transition-colors ${
-              view === v ? 'bg-secondary/20 text-secondary' : 'text-fgMuted hover:text-fg'
-            }`}
-          >
-            {v === 'day' ? 'Dia' : v === 'month' ? 'Mês' : 'Ano'}
-          </button>
-        ))}
-      </div>
-
-      {view === 'year' ? (
+      {level !== 'day' ? (
         <>
           <div className="mb-3 flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wide text-fgMuted">
-              Evolução · Ano {year}
+              {head.title}
             </span>
             <span
               className={`nums text-sm font-bold ${
-                yearProfit > 0 ? 'text-green' : yearProfit < 0 ? 'text-red' : 'text-fgDim'
+                head.profit > 0 ? 'text-green' : head.profit < 0 ? 'text-red' : 'text-fgDim'
               }`}
             >
-              {signedMoney(yearProfit, currency)}
+              {signedMoney(head.profit, currency)}
             </span>
           </div>
-          {yearBets.length === 0 ? (
-            <Empty label="Sem apostas neste ano" />
+          {bucketSeries.length === 0 ? (
+            <Empty label="Sem apostas neste período" />
           ) : (
             <div className="h-[240px] w-full">
               <ResponsiveContainer>
-                <AreaChart data={yearSeries} margin={{ top: 8, right: 12, bottom: 0, left: -12 }}>
-                  <defs>
-                    <linearGradient id="yrArea" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={LINE} stopOpacity={0.28} />
-                      <stop offset="100%" stopColor={LINE} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                  <XAxis dataKey="label" stroke={DIM} fontSize={11} tickLine={false} axisLine={false} />
-                  <YAxis stroke={DIM} fontSize={11} tickLine={false} axisLine={false} />
-                  <Tooltip
-                    content={<YearTip currency={currency} year={year} />}
-                    cursor={{ stroke: 'rgba(255,255,255,0.15)' }}
-                  />
-                  <ReferenceLine y={0} stroke="rgba(255,255,255,0.12)" strokeDasharray="4 4" />
-                  <Area
-                    type="monotone"
-                    dataKey="cum"
-                    stroke={LINE}
-                    strokeWidth={2}
-                    fill="url(#yrArea)"
-                    dot={false}
-                    activeDot={{ r: 4, fill: LINE }}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-          <p className="mt-3 text-xs text-fgDim">
-            Lucro/prejuízo acumulado mês a mês em {year}. Usa as setas do calendário para mudar de ano.
-          </p>
-        </>
-      ) : view === 'month' ? (
-        <>
-          <div className="mb-3 flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wide text-fgMuted">
-              Evolução · {monthName(month)} {year}
-            </span>
-            <span
-              className={`nums text-sm font-bold ${
-                monthProfit > 0 ? 'text-green' : monthProfit < 0 ? 'text-red' : 'text-fgDim'
-              }`}
-            >
-              {signedMoney(monthProfit, currency)}
-            </span>
-          </div>
-          {monthSeries.length === 0 ? (
-            <Empty label="Sem apostas neste mês" />
-          ) : (
-            <div className="h-[240px] w-full">
-              <ResponsiveContainer>
-                <AreaChart data={monthSeries} margin={{ top: 8, right: 12, bottom: 0, left: -12 }}>
+                <AreaChart data={bucketSeries} margin={{ top: 8, right: 12, bottom: 0, left: -12 }}>
                   <defs>
                     <linearGradient id="bkArea" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor={LINE} stopOpacity={0.28} />
@@ -247,16 +214,16 @@ export function BancaPanel({
                   </defs>
                   <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
                   <XAxis
-                    dataKey="day"
+                    dataKey="label"
                     stroke={DIM}
                     fontSize={11}
                     tickLine={false}
                     axisLine={false}
-                    interval={Math.max(0, Math.floor(monthSeries.length / 8))}
+                    interval={level === 'month' ? Math.max(0, Math.floor(bucketSeries.length / 8)) : 0}
                   />
                   <YAxis stroke={DIM} fontSize={11} tickLine={false} axisLine={false} />
                   <Tooltip
-                    content={<MonthTip currency={currency} month={month} year={year} />}
+                    content={<BucketTip currency={currency} />}
                     cursor={{ stroke: 'rgba(255,255,255,0.15)' }}
                   />
                   <ReferenceLine y={0} stroke="rgba(255,255,255,0.12)" strokeDasharray="4 4" />
@@ -273,15 +240,15 @@ export function BancaPanel({
               </ResponsiveContainer>
             </div>
           )}
-          <p className="mt-3 text-xs text-fgDim">
-            Lucro/prejuízo acumulado ao longo dos dias do mês. Escolhe um dia no calendário para o detalhe.
-          </p>
+          <p className="mt-3 text-xs text-fgDim">{caption}</p>
         </>
-      ) : selectedDay ? (
+      ) : (
         <>
           <div className="mb-3 flex items-start justify-between border-b border-border pb-3">
             <div>
-              <h3 className="text-sm font-semibold capitalize">{fmtDay(selectedDay)}</h3>
+              <h3 className="text-sm font-semibold capitalize">
+                {selectedDay ? fmtDay(selectedDay) : 'Nenhum dia escolhido'}
+              </h3>
               <span className="text-xs text-fgMuted">
                 {dayBets.length} aposta{dayBets.length === 1 ? '' : 's'}
               </span>
@@ -296,12 +263,9 @@ export function BancaPanel({
           </div>
 
           {dayBets.length === 0 ? (
-            <Empty label="Sem apostas neste dia">
-              {isAdmin && (
-                <button
-                  className="btn-ghost mt-1 py-1.5 text-xs"
-                  onClick={() => onAdd(selectedDay)}
-                >
+            <Empty label={selectedDay ? 'Sem apostas neste dia' : 'Escolhe um dia no calendário'}>
+              {isAdmin && selectedDay && (
+                <button className="btn-ghost mt-1 py-1.5 text-xs" onClick={() => onAdd(selectedDay)}>
                   <IconPlus width={14} height={14} /> Adicionar
                 </button>
               )}
@@ -390,8 +354,6 @@ export function BancaPanel({
             </>
           )}
         </>
-      ) : (
-        <Empty label="Escolhe um dia no calendário para ver as apostas" />
       )}
     </div>
   );
@@ -414,42 +376,17 @@ function BetDot(props: any) {
   const s: string = payload.bet.status;
   const color = s === 'green' ? GREEN : s === 'red' ? RED : DIM;
   return (
-    <circle
-      cx={cx}
-      cy={cy}
-      r={active ? 6 : 4}
-      fill={color}
-      stroke="rgba(255,255,255,0.35)"
-      strokeWidth={2}
-    />
+    <circle cx={cx} cy={cy} r={active ? 6 : 4} fill={color} stroke="rgba(255,255,255,0.35)" strokeWidth={2} />
   );
 }
 
-function YearTip({ active, payload, currency, year }: any) {
+function BucketTip({ active, payload, currency }: any) {
   if (!active || !payload?.length) return null;
   const p = payload[0].payload;
   return (
     <div className="card border-white/10 p-3 text-xs">
-      <p className="mb-1 font-semibold">
-        {monthName(p.month)} {year}
-      </p>
-      <Row k="P/L do mês" v={signedMoney(p.dailyPnl, currency)} tone={p.dailyPnl} />
-      <Row k="Acumulado" v={signedMoney(p.cum, currency)} tone={p.cum} />
-      <Row k="Apostas" v={String(p.count)} />
-      <Row k="Investido" v={money(p.staked, currency)} />
-    </div>
-  );
-}
-
-function MonthTip({ active, payload, currency, month, year }: any) {
-  if (!active || !payload?.length) return null;
-  const p = payload[0].payload;
-  return (
-    <div className="card border-white/10 p-3 text-xs">
-      <p className="mb-1 font-semibold">
-        {p.day} de {monthName(month)} {year}
-      </p>
-      <Row k="P/L do dia" v={signedMoney(p.dailyPnl, currency)} tone={p.dailyPnl} />
+      <p className="mb-1 font-semibold capitalize">{p.unit}</p>
+      <Row k="P/L do período" v={signedMoney(p.bucketPnl, currency)} tone={p.bucketPnl} />
       <Row k="Acumulado" v={signedMoney(p.cum, currency)} tone={p.cum} />
       <Row k="Apostas" v={String(p.count)} />
       <Row k="Investido" v={money(p.staked, currency)} />

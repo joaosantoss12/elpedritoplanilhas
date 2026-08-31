@@ -19,6 +19,8 @@ const GROUP_CTA: Record<Group, { label: string; href: string }> = {
   vip: { label: 'Entrar no grupo VIP', href: 'https://vipedrito.com' },
 };
 
+type Level = 'all' | 'year' | 'month' | 'day';
+
 const NOW = new Date();
 const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -33,7 +35,7 @@ export function PlanilhaPage() {
   const [year, setYear] = useState(NOW.getFullYear());
   const [month, setMonth] = useState(NOW.getMonth());
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
-  const [view, setView] = useState<'day' | 'month' | 'year'>('month');
+  const [level, setLevel] = useState<Level>('month');
   const [formOpen, setFormOpen] = useState(false);
   const [presetDate, setPresetDate] = useState<string | null>(null);
   const [editing, setEditing] = useState<Bet | null>(null);
@@ -54,11 +56,12 @@ export function PlanilhaPage() {
     setYear(NOW.getFullYear());
     setMonth(NOW.getMonth());
     setSelectedDay(null);
-    setView('month');
+    setLevel('month');
   };
 
   const monthPrefix = `${year}-${pad(month + 1)}`;
 
+  const allBets = useMemo(() => sortBets(bets), [bets]);
   const monthBets = useMemo(
     () => sortBets(bets.filter((b) => b.event_date.startsWith(monthPrefix))),
     [bets, monthPrefix],
@@ -69,41 +72,50 @@ export function PlanilhaPage() {
   );
 
   const scopedBets = useMemo(() => {
-    if (view === 'year') return yearBets;
-    if (selectedDay) return monthBets.filter((b) => b.event_date === selectedDay);
+    if (level === 'all') return allBets;
+    if (level === 'year') return yearBets;
+    if (level === 'day') return monthBets.filter((b) => b.event_date === selectedDay);
     return monthBets;
-  }, [view, yearBets, monthBets, selectedDay]);
+  }, [level, allBets, yearBets, monthBets, selectedDay]);
 
   const priorBankroll = useMemo(() => {
-    const start = view === 'year' ? `${year}-01-01` : `${monthPrefix}-01`;
+    if (level === 'all') return startingBankroll;
+    const start =
+      level === 'year'
+        ? `${year}-01-01`
+        : level === 'day' && selectedDay
+          ? selectedDay
+          : `${monthPrefix}-01`;
     return (
       startingBankroll +
       bets.filter((b) => b.event_date < start).reduce((s, b) => s + Number(b.profit), 0)
     );
-  }, [bets, view, year, monthPrefix, startingBankroll]);
+  }, [bets, level, year, monthPrefix, selectedDay, startingBankroll]);
 
   const stats = useMemo(
-    () => computeStats(view === 'year' ? yearBets : monthBets, priorBankroll),
-    [view, yearBets, monthBets, priorBankroll],
+    () => computeStats(scopedBets, priorBankroll),
+    [scopedBets, priorBankroll],
   );
 
   const periodLabel =
-    view === 'year'
-      ? `Ano de ${year}`
-      : selectedDay
-        ? fmtDay(selectedDay)
-        : `${monthName(month)} de ${year}`;
+    level === 'all'
+      ? 'Histórico completo'
+      : level === 'year'
+        ? `Ano de ${year}`
+        : level === 'day' && selectedDay
+          ? fmtDay(selectedDay)
+          : `${monthName(month)} de ${year}`;
 
   const selectDay = (iso: string | null) => {
     setSelectedDay(iso);
-    setView(iso ? 'day' : 'month');
+    setLevel(iso ? 'day' : 'month');
   };
 
   const changeMonth = (y: number, m: number) => {
     setYear(y);
     setMonth(m);
     setSelectedDay(null);
-    setView('month');
+    setLevel('month');
   };
 
   const openNew = (date?: string) => {
@@ -129,6 +141,20 @@ export function PlanilhaPage() {
     },
     [reload],
   );
+
+  const FILTERS: { v: Level; label: string; disabled?: boolean }[] = [
+    { v: 'all', label: 'Ver desde sempre' },
+    { v: 'year', label: 'Escolher o ano' },
+    { v: 'month', label: 'Escolher o mês' },
+    { v: 'day', label: 'Escolher o dia', disabled: !selectedDay },
+  ];
+
+  const setFilter = (v: Level) => {
+    if (v === 'day' && !selectedDay) return;
+    setLevel(v);
+  };
+
+  const calMode: 'month' | 'year' = level === 'year' ? 'year' : 'month';
 
   return (
     <div className="min-h-dvh">
@@ -181,6 +207,26 @@ export function PlanilhaPage() {
           </div>
         ) : (
           <>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {FILTERS.map((f) => (
+                <button
+                  key={f.v}
+                  onClick={() => setFilter(f.v)}
+                  disabled={f.disabled}
+                  className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                    level === f.v
+                      ? 'border-secondary bg-secondary/20 text-secondary'
+                      : 'border-border bg-white/[0.03] text-fgMuted hover:border-white/25 hover:text-fg'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+              {selectedDay && (
+                <span className="ml-1 text-xs text-fgDim">{fmtDay(selectedDay)}</span>
+              )}
+            </div>
+
             <StatsPanel stats={stats} currency={currency} title={`Resumo · ${periodLabel}`} />
 
             <div className="grid gap-4 lg:grid-cols-[340px_1fr]">
@@ -189,7 +235,17 @@ export function PlanilhaPage() {
                 year={year}
                 month={month}
                 selectedDay={selectedDay}
+                currency={currency}
+                mode={calMode}
                 onMonthChange={changeMonth}
+                onYearChange={(y) => {
+                  setYear(y);
+                  setSelectedDay(null);
+                }}
+                onModeChange={(m) => {
+                  setSelectedDay(null);
+                  setLevel(m === 'year' ? 'year' : 'month');
+                }}
                 onSelectDay={selectDay}
               />
               <BancaPanel
@@ -197,8 +253,7 @@ export function PlanilhaPage() {
                 year={year}
                 month={month}
                 selectedDay={selectedDay}
-                view={view}
-                onViewChange={setView}
+                level={level}
                 currency={currency}
                 isAdmin={isAdmin}
                 onAdd={openNew}
@@ -219,7 +274,7 @@ export function PlanilhaPage() {
                 bets={scopedBets}
                 currency={currency}
                 isAdmin={isAdmin}
-                showDate={!selectedDay}
+                showDate={level !== 'day'}
                 onEdit={(b) => {
                   setEditing(b);
                   setPresetDate(null);
